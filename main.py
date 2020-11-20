@@ -2,6 +2,8 @@ import re
 
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font
+from openpyxl.comments import Comment
+from openpyxl.utils.cell import get_column_letter
 from argparse import ArgumentParser
 
 
@@ -9,8 +11,8 @@ def get_classrooms(wb):
     ws = wb['Расписание']
     res = {}
     weekday = None
-    for row in ws.rows:
-        for col in row:
+    for i, row in enumerate(ws.rows):
+        for j, col in enumerate(row):
             match = re.fullmatch(r'.+-(?P<classroom_number>\d+(-\d)?)(/(?P<alternative_number>\d+(-\d)?))?', str(col.value))
             if match:
                 classroom_number = match.group('classroom_number')
@@ -21,10 +23,16 @@ def get_classrooms(wb):
                     if weekday not in res:
                         res[weekday] = {}
                     if lesson not in res[weekday]:
-                        res[weekday][lesson] = []
-                    res[weekday][lesson].append(classroom_number)
+                        res[weekday][lesson] = {
+                            'numbers': [],
+                            'address': []
+                        }
+                    res[weekday][lesson]['numbers'].append(classroom_number)
+                    address = f'{get_column_letter(j + 1)}{i + 1}'
+                    res[weekday][lesson]['address'].append(address)
                     if alternative_number:
-                        res[weekday][lesson].append(alternative_number)
+                        res[weekday][lesson]['numbers'].append(alternative_number)
+                        res[weekday][lesson]['address'].append(address)
     return res
 
 
@@ -44,11 +52,15 @@ def fill_workload(wb, classrooms):
                 weekday = ws[weekday_index][j].value or weekday
                 lesson = ws[lesson_index][j].value or lesson
                 if weekday in classrooms and lesson in classrooms[weekday] and classroom_number in classrooms[weekday][
-                    lesson]:
+                    lesson]['numbers']:
                     ws[i + 1][j].value = '+'
                     ws[i + 1][j].font = Font(color="000000")
-                    if classrooms[weekday][lesson].count(classroom_number) > 1:
+                    if classrooms[weekday][lesson]['numbers'].count(classroom_number) > 1:
                         ws[i + 1][j].fill = PatternFill(fgColor="FFC7CE", fill_type="solid")
+                        col_numbers = ",".join([classrooms[weekday][lesson]['address'][k] for k, cl_n in enumerate(
+                            classrooms[weekday][lesson]['numbers']
+                        ) if cl_n == classroom_number])
+                        ws[i + 1][j].comment = Comment(f'Адреса ячеек: {col_numbers}', 'Automatic comment')
 
 
 if __name__ == '__main__':
